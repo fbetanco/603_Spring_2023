@@ -1,0 +1,425 @@
+---
+title: "Final Project - Check point 2"
+author: "Felix Betanourt"
+desription: "DACSS 603 Final Project"
+date: "04/20/2023"
+format:
+  html:
+    toc: true
+    code-fold: true
+    code-copy: true
+    code-tools: true
+categories:
+  - finalpart2
+  - final project
+  - burnout
+  - employee burnout
+  - descriptives
+  - regression
+  - Research question
+  - hyphoteses
+---
+
+```{r}
+#| label: setup
+#| warning: false
+
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+### **Burnout in the workplace - Research Question**.
+
+Burnout is a pervasive issue in many professions, and its consequences can be significant for individuals and organizations alike. According to Maslach and Leiter (2016), burnout is characterized by emotional exhaustion, despersonalization, and reduced personal accomplishment. It is prevalent in a variety of fields, including healthcare (West et al., 2016), among other professions. Burnout can have serious consequences, including decreased job satisfaction, increased absenteeism, and turnover (West et al., 2016).
+
+There is a growing body of research exploring the causes and consequences of burnout, as well as potential solutions. Some scholars have identified factors such as job demands, lack of control, and social support as contributing to burnout (Bakker & Demerouti, 2017).
+
+Lee & Eissenstat (2017), for instance, affirm that psychological job demands and work-to-family conflict, as well as control over working hours/schedule, decision-making authority, and role clarity, have significant effects on burnout.
+
+The aim of this research paper is to provide a comprehensive understanding of **how type of business, and seniority level explain the level of burnout.**
+
+### Hypothesis.
+
+**Null Hypothesis**: The type of business, and seniority does not affect the burnout rate.
+
+**Alternative hypotheses**:
+
+1.  Working in Services (vs product type of business) predict significantly higher burnout rate, especially in Female workers.
+
+2.  Less years of experience (lower seniority) is significantly related to higher burnout rate.
+
+3.  The numbers of work hours allocated affect the burnout rate significantly in employees working from home setup (vs on site).
+
+### Data analysis
+
+```{r}
+# Loading packages
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(data.table))
+suppressPackageStartupMessages(library(psych))
+suppressPackageStartupMessages(library(scales))
+suppressPackageStartupMessages(library(lattice))
+suppressPackageStartupMessages(library(formattable))
+suppressPackageStartupMessages(library(kableExtra))
+suppressPackageStartupMessages(library(ggplot2))
+
+# Reading the data.
+
+burn <- read.csv("_data/burnout.csv")
+
+```
+
+The dataset was obtained from:
+
+https://www.kaggle.com/datasets/blurredmachine/are-your-employees-burning-out
+
+Let's see the strucutre of the dataset:
+
+```{r}
+#Structure
+str(burn)
+```
+
+The dataset contain 9 variables and 22750 observations.
+
+Four of the variables are categorical and five are numeric (including one as date).
+
+According to the source of the data, here is an definition of each variable:
+
+Employee ID: The unique ID allocated for each employee.
+
+Date of Joining: The date-time when the employee has joined the organization.
+
+Gender: The gender of the employee
+
+Company Type: The type of company where the employee is working
+
+WFH Setup Available: Is the work from home facility available for the employee
+
+Designation: The designation (designations refer to the expertise and qualifications a person must complete certain jobs) of the employee of work in the organization. In the range of \[0.0, 5.0\] bigger is higher designation.
+
+Resource Allocation: The amount of resource allocated to the employee to work, ie. number of working hours.In the range of \[1.0, 10.0\] (higher means more resource)
+
+Mental Fatigue Score: The level of fatigue mentally the employee is facing.In the range of \[0.0, 10.0\] where 0.0 means no fatigue and 10.0 means completely fatigue.
+
+Burnout Rate: The value we need to predict for each employee telling the rate of Bur out while working.In the range of \[0.0, 1.0\] where the higher the value is more is the Burnout.
+
+Let's see a Summary for each variable.
+
+But first let's do some data wranglin:
+
+- simplify the name of the variables
+- transform the Date of hire into tenure in years
+- eliminate ID form the df as it is not relevant for the analysis
+- create new variables for categorical variables as numeric to simplify analysis: Gender (0= Male, 1=Female), WFH (1=Yes, 0=No), Type of Business (0=Service, 1=Product)
+
+```{r}
+
+#simplify some variable names and transforming date
+burn <- rename(burn, fatigue = Mental.Fatigue.Score, hours = Resource.Allocation, WFH = WFH.Setup.Available, doh = Date.of.Joining, id = Employee.ID, business = Company.Type, designation = Designation, burn.rate = Burn.Rate, gender = Gender)
+
+#transforming date of hire to tenure
+burn$doh <- as.Date(burn$doh)
+burn$tenure <- difftime("2023-4-20", burn$doh, units = "weeks")
+burn$tenure <- burn$tenure/52
+burn$tenure <- as.numeric(burn$tenure)
+
+#eliminate ID as it's not relevant for the analysis. They are just the identification for each individual
+burn2 <- burn %>%
+  dplyr::select(-id)
+
+
+burn2 <- burn2%>%
+  mutate(gender.n = case_when(
+        gender == "Male" ~ 0,
+         gender == "Female" ~ 1,
+        )) %>%
+  mutate(business.n = case_when(
+         business == "Service" ~ 0,
+         business == "Product" ~ 1,
+         )) %>%
+  mutate(WFH.n = case_when(
+         WFH == "Yes" ~ 1,
+         WFH == "No" ~ 0,
+         ))
+
+```
+
+
+#### Descriptives and exploratory visualization.
+
+
+```{r}
+
+#creating a df with only continuous variables
+burn3 <- burn2 %>%
+  dplyr::select(-gender, -gender.n, -doh, -WFH, -business, -WFH.n, -tenure, -business.n)
+
+describe_data <- describe(x=burn3) %>% 
+  dplyr::select(c(vars, n, mean, sd, median, min, max))
+
+kable(describe_data) %>% 
+  kable_styling("striped")
+
+
+
+```
+
+
+Histograms for Burnout Rate, mental Fatigue, Work hours allocated, Designation Level and tenure.
+```{r}
+
+hist(burn2$burn.rate, freq = TRUE, col="#a1e9f0", main = "Histogram for Burnout Rate", xlab = "Burn Rate", ylab = "Frequency")
+
+hist(burn2$fatigue, freq = TRUE, col="#a1e9f0", main = "Histogram for Mental Fatigue", xlab = "Values", ylab = "Frequency")
+
+hist(burn2$hours, freq = TRUE, col="#a1e9f0", main = "Histogram of hours allocated", xlab = "Work Hours allocated", ylab = "Frequency")
+
+hist(burn2$designation, freq = TRUE, col="#a1e9f0", main = "Histogram of Designation", xlab = "Designation Level", ylab = "Frequency")
+
+hist(burn2$tenure, freq = TRUE, col="#a1e9f0", main = "Histogram of Tenure", xlab = "Tenure", ylab = "Frequency")
+```
+
+We can note that Burnout Rate shows a distribution close to a normal distribution while a bit skewed to to the right. hours allocated seems also skewed to the right.
+
+In the case of Mental Fatigue, the distribution seems also a bit skewed to the left.
+
+In the case of tenure seems a very homogeneous distribution, with almost the same amount of employees hired within the same year and evenly distributed in that year.
+
+
+Let's visualize Gender, Type of Business and Work setting (WFH):
+
+```{r}
+
+ggplot(burn) +
+  geom_bar(aes(x=business, fill=gender),
+           position = "dodge") +
+  labs(title="Number of employees by Gender, Type of business and Work Setup (remote yes or no)",
+        x ="Type Of Business", y = "Frequency")+
+  facet_wrap(~WFH)
+
+ggplot(burn) +
+  geom_bar(aes(x=WFH, fill=gender),
+           position = "dodge") +
+  labs(title="Number of employees by Gender, and Work Setup (remote yes or no)",
+        x ="Type Of Business", y = "Frequency")
+
+ggplot(burn, aes(x=WFH,  group=business)) + 
+    geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") +
+    geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="gender") +
+    facet_grid(~business) +
+    scale_y_continuous(labels = scales::percent)
+
+```
+
+Seems that there are more females working from home than males regardless the business.
+
+#### Explore relationships
+
+```{r}
+
+box2 <- ggplot(burn2, aes(x=business, y=burn.rate, fill=gender)) + 
+    geom_boxplot(alpha=0.7, outlier.shape = NA) +
+  labs(title="Box Plot - Burnout Rate by Gender, Type of business and Work From home",
+        x ="Type Of Business", y = "Burnout Rate")+
+    facet_wrap(~WFH, scale="free")
+
+box2
+
+box3 <- ggplot(burn2, aes(x=business, y=hours, fill=gender)) + 
+    geom_boxplot(alpha=0.7, outlier.shape = NA) +
+  labs(title="Box Plot - Hours allocated, Type of business and Work From home",
+        x ="Type Of Business", y = "Hours Allocated")+
+    facet_wrap(~WFH, scale="free")
+
+box3
+
+box4 <- ggplot(burn2, aes(x=WFH, y=hours, fill=gender)) + 
+    geom_boxplot(alpha=0.7, outlier.shape = NA) +
+  labs(title="Box Plot - Hours allocated, Type of business and Work From home",
+        x ="Type Of Business", y = "Hours Allocated")
+
+box4
+
+box5 <- ggplot(burn2, aes(x=gender, y=hours)) + 
+    geom_boxplot(alpha=0.7, outlier.shape = NA) +
+  labs(title="Box Plot - Hours allocated, Type of business and Work From home",
+        x ="Type Of Business", y = "Hours Allocated")
+
+box5
+
+```
+
+It looks like the Burnout rate is higher in the employees working on site compared to employees working from home, and males shows higher rate compared to females in both type of businesses but it seems a higher difference among employees working from home.
+
+On the other hand, the numbers of hours allocated seems higher for employees working on site and particularly males regardless the type of business.
+
+```{r}
+
+scatter1 <- ggplot(burn2, aes(designation,burn.rate))+
+  geom_point(aes(color=WFH))+
+  geom_smooth(method="lm")+
+  labs(title="Scatter Plot - Burnout Rate vs Designation grouped by Gender and WFH setup",
+        x ="Designation", y = "Burnout Rate")+
+  facet_wrap(~gender)
+scatter1
+
+scatter2 <- ggplot(burn2, aes(hours,burn.rate))+
+  geom_point(aes(color=WFH))+
+  geom_smooth(method="lm")+
+  labs(title="Scatter Plot - Burnout Rate vs Hours allocated grouped by Gender and WFH setup",
+        x ="Hours allocation", y = "Burnout Rate")+
+  facet_wrap(~gender)
+scatter2
+
+scatter3 <- ggplot(burn2, aes(fatigue,burn.rate))+
+  geom_point(aes(color=WFH))+
+  geom_smooth(method="gam")+
+  labs(title="Scatter Plot - Burnout Rate vs Mental Fatigue grouped by Gender and WFH setup",
+        x ="Mental Fatigue", y = "Burnout Rate")+
+  facet_wrap(~business)
+scatter3
+
+scatter4 <- ggplot(burn2, aes(hours,fatigue))+
+  geom_point(aes(color=WFH))+
+  geom_smooth(method="lm")+
+  labs(title="Scatter Plot - Hours allocated vs Mental Fatigue grouped by Gender and WFH setup",
+        x ="Hours allocated", y = "Mental fatigue")+
+facet_wrap(~gender)
+scatter4
+
+scatter5 <- ggplot(burn2, aes(designation, hours))+
+  geom_point(aes(color=WFH))+
+  geom_smooth(method="lm")+
+  labs(title="Scatter Plot - Hours allocated vs Designation grouped by Gender and WFH setup",
+        x ="Designation", y = "Hours allocated")+
+facet_wrap(~gender)
+scatter5
+
+```
+
+From the charts we can see that there is a positive relationship between:
+
+- Designation and burnout rate
+- Amount of hours allocated and burnout rate
+- Mental fatigue and burnout rate
+- Hours allocated and Mental fatigue
+
+All of those relationship exist regardless the gender and seems moderated by the work from home setup.
+
+Seems that working from home has a key role in the relationship of the variables.
+
+Lastly the relationship between Burnout rate and Fatigue doesn't look completely lineal, but let's check the so I will create a new variable by doing a quadratic transformation of Fatigue, and using it later for the regression
+
+Let's  analyze these initial findings with a few statistics.
+
+1. first let's see how is the relationship between Burnout Rate, type of business, WFH and gender:
+
+```{r}
+# Three-way ANOVA
+
+aov.model1 <- aov(burn.rate ~ business * gender * WFH, data = burn2)
+
+summary(aov.model1)
+
+aov.model2 <- aov(hours ~ business * gender * WFH, data = burn2)
+
+summary(aov.model2)
+
+```
+
+As we can see in this three-way ANOVA, type of business seems not relevant to explain burnout rate as the F value is not significant, but gender and WFH are both significant and also are when combined.
+
+Let's explore the relationship among continuous variables using a correlation matrix:
+
+```{r}
+# Cor Matrix
+cor_matrix2 <- cor(burn2[, c("burn.rate", "hours", "designation", "fatigue")], use = "complete.obs")
+round(cor_matrix2, 2)
+
+cor_matrix3 <- cor(burn2[, c("burn.rate", "hours", "designation")], use = "complete.obs")
+round(cor_matrix3, 2)
+
+```
+
+The first thing we have to notice is that Hours allocated shows strong correlation with almost all the rest fo the variables, this could represent multicollinearity. So I may need to exclude some variables the Regression analysis.
+
+In this case seems that designation has a very strong positive correlation with hours allocated, seems that the company assign to more senior employees more work hours.
+
+But to explain burnout seems more logic to think that number of work hours explain burnout, so I rather use hours and not designation in the model and avoid multicollinearity.
+
+Also I'll use backward Stepwise regression to keep only the relevant variables. 
+
+```{r}
+
+# Fit a multiple regression model with predictor variables
+lm.model1 <- lm(burn.rate ~ gender.n + WFH.n + hours, data = burn2)
+summary(lm.model1)
+
+# Step Model - Forward
+step_model1 <- step(lm.model1, direction = "backward", criterion= "AIC")
+summary(step_model1)
+```
+
+Type of business is not relevant to the model to explain Burnout. so it is excluded from the model.
+
+Let's check assumptions
+
+```{r}
+par(mfrow = c(2,3))
+plot(step_model1, which = 1:6)
+
+```
+
+Doesn't seems there are assumptions violations in this model.
+
+However based on the scatter plot above about Burnout Rate and Fatigue, the relationship doesn't seem very linear, therefore if we apply a polynomial regression by doing a quadratic transformation of fatigue the model would adjust a bit better.
+
+
+```{r}
+lm.model2 <- lm(burn.rate ~ business.n + hours + gender.n + I(fatigue^2) + fatigue +  WFH.n, data = burn2)
+
+# Step Model - Forward
+step_model2 <- step(lm.model2, direction = "backward", criterion= "AIC")
+summary(step_model2)
+
+par(mfrow = c(2,3))
+plot(step_model2, which = 1:6)
+
+```
+
+The model seems to fit better now. The new quadratic Fatigue is significant in the model, so I'll include it.
+
+Hours allocated, Gender, Fatigue and WFH or not seems to explain significantly the burnout in the employees included in the study. Being Hours allocated and fatigue the most relevant variables in the model to explain burnout (higher t value).
+
+
+
+### Conclusions
+
+We can't accept the null hypothesis, at least partially, as the type of business does not affect the burnout rate in employees, but the designation level certainly does. 
+
+Specifically there is a positive relationship between burnout and designation level.
+
+This means that the Alternative hypothesis 2 can't be accepted as it stated a negative relationship between those two variables.
+
+On the other hand the alternative hypothesis 1 stated that being in Services and being female is related to higher burnout rate, and the results indicates that the type of business is not relevant to predict burnout, and being female is neither associated to higher burnout. 
+
+However, gender explain in part the burnout. In particular, being female is associated with lower burnout rate compared to males employees.
+
+Lastly, in relation to the alternative hypothesis 3, certainly the number of hours allocated are positive related to burnout, in particular, working on site is associated to more working hours for males and females compared to employees working from home. However within the group of employees working on site, males seems to have significantly more hours allocated than females.
+
+Ultimately, seems that amount of working hours and mental fatigue are the most relevant variables to explain burnout.Gender and WFH setup seems relevant in the sense of how are the hours allocated. Being male working on site absorbing more work hours, therefore more burnout.
+
+
+
+### **References**:
+
+Bakker, A. B., & Demerouti, E. (2017). Job demands-resources theory: Taking stock and looking forward. Journal of Occupational Health Psychology, 22(3), 273--285.
+
+Lee, Y., Eissenstat, S. (2017). A longitudinal examination of the causes and effects of burnout based on the job demands-resources model. International Journal for Educational and Vocational Guidance, 18(3), 337--354.
+
+Maslach, C., & Leiter, M. P. (2016). Understanding the burnout experience: Recent research and its implications for psychiatry. World Psychiatry, 15(2), 103--111.
+
+West, C. P., Dyrbye, L. N., Erwin, P., Shanafelt, T. D., (2016). Interventions to promote physician well-being and mitigate burnout: A systematic review and meta-analysis. The Lancet, 388(10057), 2272--228
